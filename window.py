@@ -9,7 +9,7 @@ class Window(Widget):
 
 	def __init__(s, weight=1, background='000000', foreground='ffffff', timeout=0, maxlines=100):
 		super().__init__(weight, background, foreground)
-
+	
 		s.timeout = timeout
 		s._max = maxlines
 
@@ -52,6 +52,7 @@ class Window(Widget):
 		s.clear()
 
 	def _wraptext(s, text):
+		text = text.replace('\x02', '')
 		return tuple(text[i:i+s.width] for i in range(0, len(text), s.width))
 
 	def _format(s, text):
@@ -67,20 +68,23 @@ class Window(Widget):
 			text = re.sub(r'[^\b][\b]', '', text)
 		return prompt + text
 
-	def put(s, text):
+	def _put(s, text):
 		s._draw_cond.acquire()
 
 	 	# pego novas linhas de texto
 		# usa split('\n') para deixar '' no final
 		lines = text.split('\n')
 
-		# formata as linhas novas
-		lines = [s._format(l) for l in lines]
-
 		if len(s._content) > 0:
 			last = s._content.pop(-1)
+			with termwin._draw_lock:
+				for i, l in enumerate(s._wraptext(last)):
+					print(s._setcolors() + termwin._move(s.column, s.row + s._offset + i) + ' ' * s.width + s._resetcolors(), end='')
 			# junta  a última linha com a primeira nova
 			lines[0] = last + lines[0]
+
+		# formata as linhas novas
+		lines = [s._format(l) for l in lines]
 
 		# adiciona as linhas ao content
 		s._content += lines
@@ -92,6 +96,29 @@ class Window(Widget):
 
 		s._draw_cond.notify()
 		s._draw_cond.release()
+
+	def print(s, *objects, end='\n', sep=' '):
+		if end is None:
+			end = '\n'
+		if sep is None:
+			sep = ' '
+		objects = list(map(lambda x: str(x), objects))
+		text = sep.join(objects) + end
+		s._put(text)
+
+	def input(s, prompt):
+		text = ''
+		if prompt:
+			s._put(prompt+'\x02')
+		while (c := termwin.readchar()) != '\n':
+			if ord(c) == 127 or ord(c) == 8:
+				text = text[:-1]
+				c = '\b'
+			else:
+				text += c
+			s._put(c)
+		s._put('\n')
+		return text
 
 	def clear(s):
 		_, maxwidth = termwin.gettermsize()
@@ -110,17 +137,26 @@ class Window(Widget):
 
 	def _draw(s):
 		s.clear()
-		overflow = []
+		lastoffset = 0
+		skip = 0
 
 		s._draw_cond.acquire()
 		s._draw_cond.notify()
 		while not s._die:
 			s._draw_cond.wait()
-			content = s._content[s._idx:] if '' not in s._content[-1:] else s._content[:-1]
-			content = overflow + content
-			for line in overflow + content:
-				wrapped = s._wraptext(line)
-				for l in wrapped:
+			# acho que é aqui que tem que mexer para poder usar w.print()
+			# pode usar outro caractere de controle tipo \x03 ↓
+			content = s._content[s._idx:] #parece que tirando isso dá certo? -> if '' not in s._content[-1:] else s._content[s._idx:-1]
+			for line in content:
+				wrapped = s._wraptext(line)[skip:]
+				lastoffset = len(wrapped)
+				for i, l in enumerate(wrapped):
+					if s._offset >= s.height:
+						skip = i
+						s._offset = 0
+						with s._timeout_cond:
+							s._timeout_cond.wait(s.timeout)
+						s.clear()
 					with termwin._draw_lock:
 						print(
 							s._setcolors() + \
@@ -129,13 +165,9 @@ class Window(Widget):
 								s.row + s._offset
 								) + l.ljust(s.width) + \
 							s._resetcolors(),
-							flush=True)
+							flush=True, end='')
 					s._offset += 1
-					if s._offset >= s.height:
-						overflow = list(wrapped[wrapped.index(l)+1:])
-						s._offset = 0
-						with s._timeout_cond:
-							s._timeout_cond.wait(s.timeout)
-						s.clear()
-			s._idx = len(s._content)
+				skip = 0
+			s._idx = max(len(s._content) - 1, 0)
+			s._offset = max(s._offset - lastoffset, 0)
 		s._draw_cond.release()
