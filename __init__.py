@@ -97,8 +97,11 @@ up = '\x11'
 down = '\x12'
 right = '\x13'
 left = '\x14'
-def readchar():
+def readchar(empty=False):
 	get = lambda: sys.stdin.buffer.raw.read(1)
+	if empty:
+		while get(): pass
+		return
 	while not (c := get()):
 		sleep(1/24)
 	while True:
