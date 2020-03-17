@@ -93,10 +93,10 @@ class __output:
 output = __output()
 """
 
-up = '\x11'
-down = '\x12'
-right = '\x13'
-left = '\x14'
+up = '\x1b[A'
+down = '\x1b[B'
+right = '\x1b[C'
+left = '\x1b[D'
 def readchar():
 	get = lambda: sys.stdin.buffer.raw.read(1)
 	while not (c := get()):
