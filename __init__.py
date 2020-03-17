@@ -97,8 +97,11 @@ up = '\x1b[A'
 down = '\x1b[B'
 right = '\x1b[C'
 left = '\x1b[D'
-def readchar():
+def readchar(empty=False):
 	get = lambda: sys.stdin.buffer.raw.read(1)
+	if empty:
+		while get(): pass
+		return
 	while not (c := get()):
 		sleep(1/24)
 	while True:

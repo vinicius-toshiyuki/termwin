@@ -106,7 +106,7 @@ class Window(Widget):
 		text = sep.join(objects) + end
 		s._put(text)
 
-	def input(s, prompt):
+	def input(s, prompt=None):
 		text = ''
 		if prompt:
 			s._put(prompt+'\x02')
@@ -114,8 +114,10 @@ class Window(Widget):
 			if ord(c) == 127 or ord(c) == 8:
 				text = text[:-1]
 				c = '\b'
-			else:
+			elif c.isprintable():
 				text += c
+			else:
+				c = ''
 			s._put(c)
 		s._put('\n')
 		return text
